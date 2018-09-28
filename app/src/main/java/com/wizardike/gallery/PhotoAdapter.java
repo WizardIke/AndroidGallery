@@ -222,22 +222,7 @@ public class PhotoAdapter extends BaseAdapter {
         imageView.setImageBitmap(bitmap);
         imageView.setVisibility(View.VISIBLE);
         progressBar.setVisibility(View.GONE);
-        int rotationAngle = 0; //in degrees
-        switch(orientation) {
-            case ExifInterface.ORIENTATION_NORMAL:
-                rotationAngle = 0;
-                break;
-            case ExifInterface.ORIENTATION_ROTATE_90:
-                rotationAngle = 90;
-                break;
-            case ExifInterface.ORIENTATION_ROTATE_180:
-                rotationAngle = 180;
-                break;
-            case ExifInterface.ORIENTATION_ROTATE_270:
-                rotationAngle = 270;
-                break;
-        }
-        imageView.setRotation(rotationAngle);
+        imageView.setRotation(orientation);
     }
 
     /**

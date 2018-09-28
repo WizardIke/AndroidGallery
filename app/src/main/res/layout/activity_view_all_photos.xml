@@ -9,8 +9,6 @@
     android:layout_height="match_parent"
     android:id="@+id/photos_view"
     android:numColumns="4"
-    android:stretchMode="columnWidth"
-    android:gravity="center"
     android:background="@color/gridViewBackground"
     android:scrollbarThumbVertical="@color/scrollBarColor">
 </GridView>
