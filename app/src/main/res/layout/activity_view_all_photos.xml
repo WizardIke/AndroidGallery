@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<GridView
+<com.wizardike.gallery.PhotoGridView
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     tools:context=".ViewAllPhotosActivity"
 
@@ -10,5 +9,8 @@
     android:id="@+id/photos_view"
     android:numColumns="4"
     android:background="@color/gridViewBackground"
-    android:scrollbarThumbVertical="@color/scrollBarColor">
-</GridView>
+    android:scrollbarThumbVertical="@color/scrollBarColor"
+    android:verticalSpacing="0dp"
+    android:horizontalSpacing="0dp"
+    >
+</com.wizardike.gallery.PhotoGridView>

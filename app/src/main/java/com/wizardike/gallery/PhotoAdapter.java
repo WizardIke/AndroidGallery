@@ -5,17 +5,18 @@ import android.content.ContentResolver;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.media.ExifInterface;
 import android.media.ThumbnailUtils;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.util.LruCache;
+import android.util.Pair;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 
+import java.util.Arrays;
 import java.util.concurrent.Executor;
 
 /**
@@ -26,7 +27,7 @@ public class PhotoAdapter extends BaseAdapter {
     private int[] imageOrientations;
     private final Activity activity;
     private final Executor executor;
-    private int thumbnailSize = 270;
+    private int thumbnailSize = 200;
     private LruCache<String, Bitmap> memoryCache;
 
     /**
@@ -50,42 +51,17 @@ public class PhotoAdapter extends BaseAdapter {
             @Override
             public void run() {
                 //Get all the image file names from a content provider
-                ContentResolver contentResolver = PhotoAdapter.this.activity.getContentResolver();
-                final String[] projection = { MediaStore.Images.Media.DATA, MediaStore.Images.Media.ORIENTATION };
-                final Cursor cursor = contentResolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                        projection,
-                        null,
-                        null,
-                        MediaStore.Images.Media.DATE_ADDED + " DESC");
-                if(cursor != null) {
-                    imageLocations = new String[cursor.getCount()];
-                    imageOrientations = new int[cursor.getCount()];
-                    int i = 0;
-                    final int dataColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
-                    final int orientationColumn = cursor.getColumnIndex(MediaStore.Images.Media.ORIENTATION);
-                    //Iterate over the returned image names and add them to an array
-                    if (cursor.moveToFirst()) {
-
-                        do {
-                            final String data = cursor.getString(dataColumn);
-                            final int orientation = cursor.getInt(orientationColumn);
-                            imageLocations[i] = data;
-                            imageOrientations[i] = orientation;
-                            ++i;
-                        } while (cursor.moveToNext());
-                    }
-                    cursor.close();
-                } else {
-                    imageLocations = new String[]{};
-                }
+                Pair<int[], String[]> imageDescriptions = getImageDescriptions();
+                imageOrientations = imageDescriptions.first;
+                imageLocations = imageDescriptions.second;
 
                 // Get max available VM memory, exceeding this amount will throw an
                 // OutOfMemory exception. Stored in kilobytes as LruCache takes an
                 // int in its constructor.
                 final int maxMemory = (int)(Runtime.getRuntime().maxMemory() / 1024);
 
-                // Use 1/8th of the available memory for this memory cache or enough memory for all images.
-                final int cacheSize = Math.min(maxMemory / 8, (imageLocations.length * 270 * 270 * 4) / 1024);
+                // Use 1/4th of the available memory for this memory cache or enough memory for all images.
+                final int cacheSize = Math.min(maxMemory / 4, (imageLocations.length * 270 * 270 * 4) / 1024);
 
                 memoryCache = new LruCache<String, Bitmap>(cacheSize) {
                     @Override
@@ -100,6 +76,78 @@ public class PhotoAdapter extends BaseAdapter {
                 callback.onCreateFinished(PhotoAdapter.this);
             }
         });
+    }
+
+    /**
+     * Reloads all the images if they have changed since the adapter whose last created or recreated.
+     * @param callback A function that will be called on the ui thread when the adapter has finished recreating
+     */
+    public void reCreate(final CreatedCallback callback) {
+        executor.execute(new Runnable() {
+            @Override
+            public void run() {
+                final Pair<int[], String[]> imageDescriptions = getImageDescriptions();
+                final boolean equal = Arrays.equals(imageDescriptions.first, imageOrientations)
+                        && Arrays.equals(imageDescriptions.second, imageLocations);
+
+                activity.runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if(equal) {
+                            //the data hasn't changed
+                            callback.onCreateFinished(PhotoAdapter.this);
+                        } else {
+                            //the data has changed
+                            PhotoAdapter.this.imageOrientations = imageDescriptions.first;
+                            PhotoAdapter.this.imageLocations = imageDescriptions.second;
+                            memoryCache.evictAll();
+                            PhotoAdapter.this.notifyDataSetChanged();
+                            callback.onCreateFinished(PhotoAdapter.this);
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    /**
+     * Gets the orientation and locations of all images on the phone
+     * @return A pair containing orientations and locations
+     */
+    private Pair<int[], String[]> getImageDescriptions() {
+        String[] imageLocations;
+        int[] imageOrientations = null;
+
+        ContentResolver contentResolver = PhotoAdapter.this.activity.getContentResolver();
+        final String[] projection = { MediaStore.Images.Media.DATA, MediaStore.Images.Media.ORIENTATION };
+        final Cursor cursor = contentResolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                projection,
+                null,
+                null,
+                MediaStore.Images.Media.DATE_ADDED + " DESC");
+        if(cursor != null) {
+            imageLocations = new String[cursor.getCount()];
+            imageOrientations = new int[cursor.getCount()];
+            int i = 0;
+            final int dataColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA);
+            final int orientationColumn = cursor.getColumnIndex(MediaStore.Images.Media.ORIENTATION);
+            //Iterate over the returned image names and add them to an array
+            if (cursor.moveToFirst()) {
+
+                do {
+                    final String data = cursor.getString(dataColumn);
+                    final int orientation = cursor.getInt(orientationColumn);
+                    imageLocations[i] = data;
+                    imageOrientations[i] = orientation;
+                    ++i;
+                } while (cursor.moveToNext());
+            }
+            cursor.close();
+        } else {
+            imageLocations = new String[]{};
+        }
+
+        return Pair.create(imageOrientations, imageLocations);
     }
 
     /**
@@ -152,7 +200,7 @@ public class PhotoAdapter extends BaseAdapter {
      */
     @Override
     public View getView(final int i, View convertView, ViewGroup viewGroup) {
-        Log.e("PhotoAdapter", "View Requested: " + i);
+        Log.d("PhotoAdapter", "View Requested: " + i);
         final ViewHolder vh = convertView == null ? new ViewHolder() : (ViewHolder) convertView.getTag();
         if (convertView == null) {
             // if it's not recycled, inflate it from xml
@@ -162,14 +210,12 @@ public class PhotoAdapter extends BaseAdapter {
             vh.progressBar = convertView.findViewById(R.id.progress_bar);
             // and set the tag to it
             convertView.setTag(vh);
-        } else if(vh.position == i){
-            return convertView;
         }
         // set it's position
         vh.position = i;
         // and erase the image so we don't see old photos, also start the progress bar
         vh.image.setImageBitmap(null);
-        vh.image.setVisibility(View.GONE);
+        vh.image.setVisibility(View.INVISIBLE);
         vh.progressBar.setVisibility(View.VISIBLE);
         vh.image.setRotation(0);
 
@@ -181,6 +227,7 @@ public class PhotoAdapter extends BaseAdapter {
         }
 
         // load the image from file
+        final String[] imageLocations = this.imageLocations;
         executor.execute(new Runnable() {
             @Override
             public void run() {
@@ -188,21 +235,22 @@ public class PhotoAdapter extends BaseAdapter {
                 if(vh.position != i) {
                     return;
                 }
-                String location = imageLocations[i];
                 // decode the jpeg into a bitmap
-                final Bitmap bmp = getThumbnail(location, thumbnailSize);
+                final Bitmap bmp = getThumbnail(imageLocations[i], thumbnailSize);
 
                 // set the bitmap (might be null)
                 // must be run on the ui thread as it alters a view and uses a non-thread safe cache
                 activity.runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        //Cache the image
-                        if (memoryCache.get(imageLocations[i]) == null) {
-                            memoryCache.put(imageLocations[i], bmp);
-                        }
-                        if (vh.position == i) {
-                            setImage(vh.image, vh.progressBar, bmp, imageOrientations[i]);
+                        if(imageLocations == PhotoAdapter.this.imageLocations) {
+                            //Cache the image
+                            if (memoryCache.get(imageLocations[i]) == null) {
+                                memoryCache.put(imageLocations[i], bmp);
+                            }
+                            if (vh.position == i) {
+                                setImage(vh.image, vh.progressBar, bmp, imageOrientations[i]);
+                            }
                         }
                     }
                 });
